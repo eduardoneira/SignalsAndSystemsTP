@@ -52,14 +52,68 @@ function ejercicio2(y,fs)
 
 endfunction
 
-function ejercicio3(y,fs)
-	r = rows(y);
+function new_y = hold_orden_cero(y)
+  	r = rows(y);
 
 	size = (2*r)-1;
 
 	new_y = zeros(size,1);
 	new_y(1:2:size) = y(:);
 	new_y(2:2:size) = y(1:r-1);
+ 
+  
+endfunction
+
+function new_y = hold_orden_uno(y)
+  	r = rows(y);
+
+	size = (2*r)-1;
+
+	new_y = zeros(size,1);
+	new_y(1:2:size) = y(:);
+	new_y(2:2:size) = (y(1:r-1) + y(2:r)) /2; 
+  
+endfunction
+
+function ret = sinc_windowed(samples,fs,fc)
+	t = (-samples/2:samples/2 -1);
+	ws = (fc/fs);
+	_sinc = 2 * ws * sinc(2* ws *t);
+
+	han = blackman(length(_sinc));
+
+	_sinc(:) = _sinc(:) .* han(:);
+
+	#plot(t, _sinc);
+  	#print("sinc(t).png","-dpng");
+  	#_sinc_fft = fftshift(abs(fft(_sinc)));
+  
+	#_sinc_f = fs*(-samples/2:samples/2-1)/samples;
+	#plot(_sinc_f, _sinc_fft);
+	#print("sinc_fft.png","-dpng");
+
+	ret = _sinc;
+endfunction
+
+function new_y = interpolar_zeros_y_filtrar(y,fs) 
+	r = rows(y);
+
+	size = (2*r)-1;
+
+	y_0=zeros(size,1);
+	y_0(1:2:size) = y(:);
+
+	_sinc = sinc_windowed(length(y_0),fs,4000);
+
+	y_filtrada = fftconv(y_0,_sinc);
+  
+  	new_y = y_filtrada(length(y_filtrada)/4:(3/4)*length(y_filtrada));
+
+endfunction
+
+function ejercicio3(y,fs)
+
+	new_y = hold_orden_cero(y);
 
 	ms = 100/1000;
 	espectrograma(new_y,fs,ms);
@@ -67,14 +121,40 @@ function ejercicio3(y,fs)
 	set(gca, "xlim", [0, 80]);
 	print("espectrograma_hold0","-dpng");
 
-	espectrograma(y,fs,ms);
+	new_y = hold_orden_uno(y);
 
-	set(gca, "xlim", [0, 40]);
-	print("espectrograma_comun","-dpng");
+	espectrograma(new_y,fs,ms);
 
-	#falta filtrar
+	set(gca, "xlim", [0, 80]);
+	print("espectrograma_hold1","-dpng");
 
+	new_y = interpolar_zeros_y_filtrar(y,fs);
 
+	espectrograma(new_y,fs,ms);
+
+	set(gca, "xlim", [0, 80]);
+	print("espectrograma_interpolar_0_y_sinc","-dpng");
+
+	audiowrite("audio_ej3.wav", new_y, fs);
+
+endfunction
+
+function ejercicio4(y,fs)
+	
+	filter = sinc_windowed(length(y),fs,4000);
+	y_filtrada = fftconv(y,filter);
+	y_filtrada = y_filtrada(length(y_filtrada)/4:(3/4)*length(y_filtrada));
+
+	new_y = zeros(ceil(length(y)/2),1);
+	new_y(:) = y_filtrada(1:2:length(y_filtrada));
+
+	ms = 100/1000;
+	espectrograma(new_y,fs,ms);
+
+	set(gca, "xlim", [0, 20]);
+	print("espectrograma_decimacion","-dpng");
+
+	audiowrite("audio_ej4.wav", new_y, fs);
 endfunction
 
 #Comienza programa
@@ -83,4 +163,4 @@ endfunction
 printf ("Duracion = %.2f s\n", rows (y)/fs);
 printf ("Sampling rate = %.2f Hz\n", fs);
 
-ejercicio3(y,fs);
+ejercicio4(y,fs);
