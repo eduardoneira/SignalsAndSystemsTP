@@ -86,9 +86,9 @@ function ret = sinc_windowed(samples,fs,fc)
 
 	#plot(t, _sinc);
   	#print("sinc(t).png","-dpng");
+  	
   	#_sinc_fft = fftshift(abs(fft(_sinc)));
-  
-	#_sinc_f = fs*(-samples/2:samples/2-1)/samples;
+  	#_sinc_f = fs*(-samples/2:samples/2-1)/samples;
 	#plot(_sinc_f, _sinc_fft);
 	#print("sinc_fft.png","-dpng");
 
@@ -157,10 +157,189 @@ function ejercicio4(y,fs)
 	audiowrite("audio_ej4.wav", new_y, fs);
 endfunction
 
+function x = istft(stft, wlen, step, nfft, fs)
+
+	coln = size(stft, 2)
+	xlen = wlen + (coln-1)*step;
+	x = zeros(1, xlen);
+
+	% synthesis window
+	win = hanning(wlen);
+
+	% initialize the signal time segment index
+	indx = 0;
+
+	% perform ISTFT (via IFFT and Weighted-OLA)
+	if rem(nfft, 2)                     % odd nfft excludes Nyquist point
+	    for col = 1:coln
+	        % extract FFT points
+	        X = stft(:, col);
+	        X = [X; conj(X(end:-1:2))];
+	        
+	        % IFFT
+	        xprim = real(ifft(X));
+	        xprim = xprim(1:wlen);
+	        
+	        % weighted-OLA
+	        x((indx+1):(indx+wlen)) = x((indx+1):(indx+wlen)) + (xprim.*win)';
+	        
+	        % update the index
+	        indx = indx + step;
+	    end
+	else                                % even nfft includes Nyquist point
+	    for col = 1:coln
+	        % extract FFT points
+	        X = stft(:, col);
+	        X = [X; conj(X(end-1:-1:2))];
+	        
+	        % IFFT
+	        xprim = real(ifft(X));
+	        xprim = xprim(1:wlen);
+	        
+	        % weighted-OLA
+	        x((indx+1):(indx+wlen)) = x((indx+1):(indx+wlen)) + (xprim.*win)';
+	        
+	        % update the index
+	        indx = indx + step;
+	    end
+	end
+
+	% scale the signal
+	W0 = sum(win.^2);
+	scaleFactor = step/W0                  
+	x = x.*scaleFactor;                      
+
+end
+
+
+function ejercicio5(y,fs)
+
+	ms = 100/1000;
+	window = fix(fs*ms);	  				
+	fftn = 2^nextpow2(window);
+	hop = window/4;
+
+	specgram(y,fftn,fs,hanning(window),window-hop);
+	print("espectrograma_ej5_stft.png","-dpng");
+	
+	[s,f,t] = specgram(y,fftn,fs,hanning(window),window-hop);
+
+	new_y = istft(s,window,hop,fftn,fs);
+
+	error = 0;
+
+	for i = 1:length(new_y)
+		error+=(y(i) - new_y(i));
+	endfor
+
+	printf("Error cuadrático medio : %.2f\n",error);
+	specgram(new_y,fftn,fs,hanning(window),window-hop);
+	print("espectrograma_ej5_istft.png","-dpng");
+
+	audiowrite("audio_ej5.wav", new_y, fs);
+endfunction
+
+function ejercicio6(y,fs)
+	ms = 100/1000;
+	window = fix(fs*ms);	  				
+	fftn = 2^nextpow2(window);
+	hop = window/4;
+
+	[s,f,t] = specgram(y,fftn,fs,hanning(window),window-hop);
+	#nueva matriz
+	new_s = zeros(rows(s),2*columns(s)-1);
+	new_s(:,1:2:columns(new_s)) = s(:,:);
+
+	fc = 4000;	
+
+	for i = 1:rows(new_s)
+		[s1,f1,t1] = specgram(new_s(i,:),fftn,fs,hanning(window),window-hop);
+		min = 10000;
+		found = 0;
+
+		for j=1:rows(s1)
+			aux = sum(abs(s1(j,:)));
+			if (aux < min)
+				min = aux;
+				found = j;
+			endif
+		endfor
+
+		fc = 8000*found/rows(s1);
+		_sinc = sinc_windowed(columns(new_s),fs,fc);
+
+		row = fftconv(new_s(i,:),_sinc);
+
+		row_no_padding = row(fix(length(row)/4):fix((3/4)*length(row)));
+		new_s(i,:) = row_no_padding(:);
+
+	endfor
+
+	new_y = istft(new_s,window,hop,fftn,fs);
+
+	specgram(new_y,fftn,fs,hanning(window),window-hop);
+	print("espectrograma_ej6.png","-dpng");
+
+	audiowrite("audio_ej6_mejor.wav",new_y,fs);	
+
+endfunction
+
+function ejercicio7(y,fs)
+	ms = 100/1000;
+	window = fix(fs*ms);	  				
+	fftn = 2^nextpow2(window);
+	hop = window/4;
+
+	[s,f,t] = specgram(y,fftn,fs,hanning(window),window-hop);
+	#nueva matriz
+	new_s = zeros(rows(s),2*columns(s)-1);
+	new_s(:,1:2:columns(new_s)) = s(:,:);	
+
+	for i = 1:rows(new_s)
+		filename = sprintf("ej6/plot_row_%d_fft.png",i);
+		specgram(s(i,:),fftn,fs,hanning(window/2),window/2-hop);
+		print(filename,"-dpng");
+
+		filename = sprintf("ej6_interpolado/plot_row_%d_fft.png",i);
+		specgram(new_s(i,:),fftn,fs,hanning(window/2),window/2-hop);
+		print(filename,"-dpng");
+		
+		[s1,f1,t1] = specgram(new_s(i,:),fftn,fs,hanning(window),window-hop);
+		min = 10000;
+		found = 0;
+
+		for j=1:rows(s1)
+			aux = sum(abs(s1(j,:)));
+			if (aux < min)
+				min = aux;
+				found = j;
+			endif
+		endfor
+
+		fc = 8000*found/rows(s1);
+
+		_sinc = sinc_windowed(columns(new_s),fs,fc);
+
+		row = fftconv(new_s(i,:),_sinc);
+
+		row_no_padding = row(fix(length(row)/4):fix((3/4)*length(row)));
+		new_s(i,:) = row_no_padding(:);
+
+	endfor
+
+	new_y = istft(new_s,window,hop,fftn,fs);
+
+	specgram(new_y,fftn,fs,hanning(window),window-hop);
+	print("espectrograma_ej6_sin_filtrar.png","-dpng");
+
+	audiowrite("audio_ej6.wav",new_y,fs);
+endfunction
+
+
 #Comienza programa
 
 [y, fs] = audioread("Audio.wav");
 printf ("Duracion = %.2f s\n", rows (y)/fs);
 printf ("Sampling rate = %.2f Hz\n", fs);
 
-ejercicio4(y,fs);
+ejercicio5(y,fs);
